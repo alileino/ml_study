@@ -4,8 +4,8 @@ from os import path
 DATA_DIR = "data"
 TRAIN_SET = path.join(DATA_DIR, "train-images-idx3-ubyte")
 TRAIN_LABELS = path.join(DATA_DIR, "train-labels-idx1-ubyte")
-TEST_SET = path.join("t10k-images-idx3-ubyte")
-TEST_LABELS = path.join("t10k-labels-idx1-ubyte")
+TEST_SET = path.join(DATA_DIR, "t10k-images-idx3-ubyte")
+TEST_LABELS = path.join(DATA_DIR, "t10k-labels-idx1-ubyte")
 
 
 def readTraining():
