@@ -7,15 +7,14 @@ TRAIN_LABELS = path.join(DATA_DIR, "train-labels-idx1-ubyte")
 TEST_SET = path.join(DATA_DIR, "t10k-images-idx3-ubyte")
 TEST_LABELS = path.join(DATA_DIR, "t10k-labels-idx1-ubyte")
 
+def read_training(image_limit=sys.maxsize):
+    return read_data(TRAIN_SET, TRAIN_LABELS, image_limit=image_limit)
 
-def readTraining():
-    return readData(TRAIN_SET, TRAIN_LABELS)
+def read_test(image_limit=sys.maxsize):
+    return read_data(TEST_SET, TEST_LABELS, image_limit=image_limit)
 
-def readTest():
-    return readData(TEST_SET, TEST_LABELS)
-
-def readData(imageFilename, labelFilename, image_limit=sys.maxsize):
-	def readInts(f, numInts):
+def read_data(imageFilename, labelFilename, image_limit=sys.maxsize):
+	def read_ints(f, numInts):
 		result = []
 		for i in range(numInts):
 			b = f.read(4)
@@ -24,13 +23,13 @@ def readData(imageFilename, labelFilename, image_limit=sys.maxsize):
 				result.append(asint)
 
 		return (result)
-	def readImages():
+	def read_images():
 		images = []
 		with open(imageFilename, "rb") as f:
-			if 2051 != readInts(f, 1)[0]:
+			if 2051 != read_ints(f, 1)[0]:
 				raise ValueError()
-			
-			numImages,numRows,numCols = readInts(f, 3)
+
+			numImages,numRows,numCols = read_ints(f, 3)
 
 			for image in range(min(numImages, image_limit)):
 				b = f.read(numRows*numCols)
@@ -38,27 +37,27 @@ def readData(imageFilename, labelFilename, image_limit=sys.maxsize):
 				images.append(imgdata)
 
 		return images
-	def readLabels(image_limit=sys.maxsize):
+	def read_labels(image_limit=sys.maxsize):
 		labels = []
 		with open(labelFilename, "rb") as f:
-			
-			if 2049 != readInts(f, 1)[0]:
+
+			if 2049 != read_ints(f, 1)[0]:
 				raise Exception()
-			numLabels, = readInts(f, 1)
+			numLabels, = read_ints(f, 1)
 			numToRead = min(numLabels, image_limit)
 			labels = list(f.read(numToRead))
 
 		return labels
-	images = readImages()
-	labels = readLabels()
+	images = read_images()
+	labels = read_labels()
 	return images, labels
 
-def appendOnesRow(arr):
+def append_ones_row(arr):
 	temp = np.ones((len(arr), len(arr[0])+1))
 	temp[:, 1:] = arr
 	return temp
 
-def errorRate(labels, prediction):
+def error_rate(labels, prediction):
 	correct = 0
 	incorrect = 0
 	digitsc = [0 for _ in range(10)]
@@ -78,6 +77,5 @@ def errorRate(labels, prediction):
 	print("Max failure: ", str(maxLabel), " as ", str(maxLabelV))
 	print ("C:", correct, "I:", incorrect, "%:", (correct/(correct+incorrect)))
 
-		
 
-	
+
