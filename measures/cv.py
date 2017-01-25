@@ -54,7 +54,7 @@ def cv_score(model, X, y, cv, score_func):
         predy = model.predict(testX)
         score = score_func(predy, testY)
         scores.append(score)
-    return np.mean(scores)
+    return scores
 
 def cv_accuracy_score(model, X, y, cv=KFold(n_splits=4)):
     '''
