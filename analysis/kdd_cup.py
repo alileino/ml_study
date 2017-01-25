@@ -4,20 +4,19 @@ import os.path as path
 
 from sklearn.metrics import accuracy_score
 from sklearn.metrics import f1_score
-from sklearn.preprocessing import LabelEncoder
-# from sklearn.model_selection import cross_val_score, KFold
+from sklearn.metrics import confusion_matrix
 from measures.cv import cv_accuracy_score, KFold
 
-from sklearn.neighbors import KNeighborsClassifier
 from models.knn import KNN
+from helpers import plot_confusion_matrix
 
 import matplotlib.pyplot as plt
+
 PATH = "../data/KDD_Cup99"
 TRAIN_FILE = path.join(PATH, "TrainData.csv")
 TEST_FILE = path.join(PATH, "TestData.csv")
 
 '''
-For any questions regarding this exercise contact:    parmov@utu.fi
 
 In this exercise the KDDcup99 intrusion detection dataset is given. The actual KDDcup training data set contain 38 different network attack types.
 
@@ -54,88 +53,78 @@ Bonus:
 Notification:
 
     If the program is slow due to the size of the dataset you can downsize the data, subsample from each 5 class of data, create a smaller dataset containing all 5 classes and perform K-NN on that subset.
-
-
 '''
+
+OUTPUT_PATH = "../reports/img"
+
 class KddDataProvider:
+    '''
+    Loads and preprocesses KddCup99 data.
+    '''
     label_columns = [1,2,3]
-    def __init__(self):
-        # self.load_data()
-        trainX, trainY, testX, testY = self.load_pandas()
+    def __init__(self, debug=False):
+        '''
+        :param debug: If true, it uses a small part of the entire training data set
+        '''
+        trainX, trainY, testX, testY = self.__load_data(debug)
         self.trainX = trainX
         self.trainY = trainY
         self.testX = testX
         self.testY = testY
 
     def get_train(self):
+
         return self.trainX, self.trainY
 
     def get_test(self):
         return self.testX, self.testY
 
-    def load_pandas(self):
-        dftrain = pd.read_csv(TRAIN_FILE, header=None)
+    def __load_data(self, debug):
+        '''
+        Loads the training and test data and does preprocessing to them
+        :param debug:
+        :return:
+        '''
+        dftrain = pd.read_csv(TRAIN_FILE, header=None, names=np.arange(0,42))
 
-        # dftrain = dftrain.sample(frac=0.3, random_state=1)
-        orig_len = len(dftrain)
-        dftrain.dropna(axis=1, how="any", inplace=True)
-        print("dropped: ", orig_len - len(dftrain), "values")
+        if debug:
+            dftrain = dftrain.sample(frac=0.3, random_state=1)
+
         train_size = len(dftrain)
-        dftest = pd.read_csv(TEST_FILE, header=None)
+        dftest = pd.read_csv(TEST_FILE, header=None, names=np.arange(0,42))
+
+        # Drop rows with NA's
         dftest = dftest.dropna(axis=0, how="any")
         df = dftrain.append(dftest , ignore_index=True)
-        for c in df.columns:
+
+        for c in df.columns: # Drop columns with only a single value,
             if len(df[c].unique()) <= 1:
                 df = df.drop(c, axis=1)
-        for label_column in KddDataProvider.label_columns:
-            df[label_column] = df[label_column].factorize()[0]
+        df = self.__encode(df)
+
 
         trainY = df.values[:train_size,-1]
 
         testY = df.values[train_size:, -1]
-        df = df.drop(len(df.columns), axis=1)
+        df = df.drop(df.columns[-1], axis=1) # drop the last column
 
+        # Z-score normalize the data
         df = (df - df.mean()) / (df.max() - df.min())
 
         trainX = df.values[:train_size,:-1]
         testX = df.values[train_size:, :-1]
         return trainX, trainY, testX, testY
 
-    def load_data(self):
-        dftrain = pd.read_csv(TRAIN_FILE, header=None)
-        dftest = pd.read_csv(TEST_FILE, header=None)
+    def __encode(self, df):
+        newdf = df[df.columns[0]]
 
-        trainX =  dftrain.values[:, :-1]
-        trainY = dftrain.values[:, -1]
-        self.test_begin = len(trainX)
-        testX = dftest.values[:, :-1]
-        testY = dftrain.values[:, -1]
-        X = np.array([])
-        X = np.concatenate((trainX, testX), 0)
-        print("lenTX:", len(trainX), "lenTEX", len(testX), "lenX:", len(X))
-        # X = self.preprocess(X)
-        print(X[0])
+        for label_column in KddDataProvider.label_columns:
+            newdf = pd.concat((newdf, pd.get_dummies(df[label_column], '', '').astype(int)), axis=1, ignore_index=True)
 
-    def preprocess(self, X):
-        for label_column in KddDataProvider.label_column:
-            label_enc = LabelEncoder()
-            column = X[:, label_column]
-            missing = np.isnan(column)
-            X[missing, label_column] = "-1"
+        newdf = pd.concat((newdf, df[df.columns[4:]]), axis=1)
+        newdf.columns = np.arange(0, len(newdf.columns))
 
-            transform = label_enc.fit_transform(X[:, label_column])
-        return X
-
-
-
-def ftest(estimator, X, y):
-    predy = estimator.predict(X)
-    return f1_score(y, predy, average="weighted")
-
-def accuracy(estimator, X, y):
-    predy = estimator.predict(X)
-    return accuracy_score(y, predy)
-
+        return newdf
 
 def plot_model_selection():
     neighbors = np.arange(1,11)
@@ -143,54 +132,51 @@ def plot_model_selection():
     data = KddDataProvider()
     X, y = data.get_train()
 
-    scorers = [accuracy, ftest]
-    scores = {scorer : [] for scorer in scorers}
-    for score_func in scorers:
-        for k in neighbors:
+    scores = []
 
-            knn = KNeighborsClassifier(n_neighbors=k, weights="uniform")
-            # knn = KNN(n_neighbors=k)
-            # s = cross_val_score(knn, X, y=y, cv=10, scoring=score_func)
-            s = cv_accuracy_score(knn, X, y, cv=KFold(n_splits=10))
-            scores[score_func].append(s)
+    for k in neighbors:
+
+        knn = KNN(n_neighbors=k)
+        s = cv_accuracy_score(knn, X, y, cv=KFold(n_splits=10))
+        scores.append(s)
 
 
     plt.figure()
-    scorer_names = {accuracy:"Accuracy", ftest:"f1-test"}
-    offset = 0
-    for scorer in scorers:
-        allscores = np.array(scores[scorer])
+    y = np.mean(scores, axis=1)
 
-        y = np.mean(allscores, axis=1)
+    # Uncomment to plot std error bars
+    # e = np.std(allscores, axis=1)
 
-        # Uncomment to plot std error bars
-        # e = np.std(allscores, axis=1)
-
-        # plt.errorbar(neighbors+offset, y, yerr=e, lw=2, label=scorer_names[scorer])
-        plt.plot(neighbors, y, label=scorer_names[scorer])
-        plt.legend()
-        offset += 0
+    # plt.errorbar(neighbors+offset, y, yerr=e, lw=2, label=scorer_names[scorer])
+    plt.plot(neighbors, y, label="Accuracy")
+    plt.legend()
 
     plt.suptitle("10-fold average CV score and Std for KNN")
     plt.xlabel("k (neighbors)")
     plt.ylabel("Score")
     plt.xticks(neighbors)
-    plt.show()
+    plt.savefig(path.join(OUTPUT_PATH, "kdd_model_selection.png"), format="PNG")
 
 
 
-plot_model_selection()
+# plot_model_selection()
 
-def plot_confusion_matrix():
-    data = KddDataProvider()
+def plot_confusion(truey, predy):
+    plt.figure()
+    cm = confusion_matrix(truey, predy)
+    plot_confusion_matrix(cm, np.unique(truey))
+    plt.savefig(path.join(OUTPUT_PATH, "kdd_confusion_matrix.png"), format="PNG")
+
+
+def print_results():
+    data = KddDataProvider(debug=False)
     trainX, trainY = data.get_train()
     testX, testY = data.get_test()
-    # knn = KNeighborsClassifier(n_neighbors=3, weights="distance")
-    knn = KNN(n_neighbors=9)
+    knn = KNN(n_neighbors=8)
     knn.fit(trainX, trainY)
     predY = knn.predict(testX)
     accuracy = accuracy_score(testY, predY)
     fscore = f1_score(testY, predY, average="weighted")
-    print("Accuracy:", accuracy, "Fscore", fscore)
-
-plot_confusion_matrix()
+    print("Accuracy:", accuracy, "F1-score", fscore)
+    plot_confusion(testY, predY)
+print_results()
