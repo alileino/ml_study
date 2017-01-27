@@ -4,6 +4,7 @@ class KFold:
         self.n_splits = n_splits
 
     def split(self, X):
+
         minfoldsize = len(X)//self.n_splits
         rem = len(X)-minfoldsize*self.n_splits #remainder, when the splits are not even
         foldsizes = np.repeat(minfoldsize, self.n_splits)
@@ -16,6 +17,7 @@ class KFold:
             trainindex = np.concatenate((np.arange(0, startindex), np.arange(endindex, len(X))))
             yield trainindex, testindex
 
+
 def accuracy_score(predy, y):
     '''
     Returns the accuracy score for predicted y and true y
@@ -25,14 +27,14 @@ def accuracy_score(predy, y):
     '''
     return np.mean(np.where(np.isclose(predy, y), 1, 0))
 
-def squared_diff_score(predy, y):
+def mean_squared_error(predy, y):
     '''
     Returns the sum of squared differences between predicted y and true y
     :param predy: predicted y
     :param y:
     :return:
     '''
-    return np.sum((predy - y) ** 2)
+    return np.mean((predy - y) ** 2)
 
 def cv_score(model, X, y, cv, score_func):
     '''
@@ -47,6 +49,7 @@ def cv_score(model, X, y, cv, score_func):
     scores = list()
     for trainindex, testindex in cv.split(X):
         trainX = X[trainindex]
+
         trainY = y[trainindex]
         testX = X[testindex]
         testY = y[testindex]
@@ -68,4 +71,4 @@ def cv_squares_score(model, X, y, cv=KFold(n_splits=4)):
     Returns the cv-score using squared difference scoring
     :see cv_score, squared_diff_score
     '''
-    return cv_score(model, X, y, cv=cv, score_func=squared_diff_score)
+    return cv_score(model, X, y, cv=cv, score_func=mean_squared_error)
