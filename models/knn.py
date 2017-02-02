@@ -1,5 +1,5 @@
 import numpy as np
-from measures.cv import accuracy_score, squared_diff_score
+from measures.cv import accuracy_score, mean_squared_error
 
 class KNN:
     def __init__(self, n_neighbors=5, metric=None, regression=False):
@@ -13,7 +13,7 @@ class KNN:
         '''
         self.n_neighbors = n_neighbors
         if metric == None:
-            metric = KNN.__euclidean
+            metric = self.__l2_distance
         self.metric = metric
         self.regression = regression
         self.classification = not regression
@@ -35,9 +35,9 @@ class KNN:
         :param X: the design matrix X
         :return: the predicted values for rows of X
         '''
-        dist = self.__get_distance_matrix(X)
+        self.distances_ = self.metric(X)
 
-        ranks = np.apply_along_axis(KNN.__rank, 1, dist)
+        ranks = np.apply_along_axis(KNN.__rank, 1, self.distances_)
         # Using np.nan to denote values that are not nearest neighbors
         indicators = np.where(ranks < self.n_neighbors, 1, np.nan)
 
@@ -62,17 +62,7 @@ class KNN:
         if self.classification:
             return accuracy_score(predy, y)
         else:
-            return squared_diff_score(predy, y)
-
-    def __apply_metric_old(self, y):
-        '''
-        Applies the metric to each row in self.X paired with y
-        :param y: the y to give as parameter to metric
-        :return: 1-dimensional distance vector, where each value is the pairwise distance of corresponding row in X and y
-        '''
-        metric = lambda x: self.metric(x, y)
-        dist = np.apply_along_axis(metric, 1, self.X)
-        return dist
+            return mean_squared_error(predy, y)
 
     def __get_distance_matrix(self, X):
         X = X.astype(np.float64)
@@ -94,16 +84,16 @@ class KNN:
         return ranks
 
 
-    @staticmethod
-    def __euclidean(y, X):
-        '''
-        The euclidean distance metric
-        :param y:
-        :param X:
-        :return:
-        '''
-        axis = np.ndim(X)-1
-        return np.sqrt(np.sum((y-X)**2, axis=axis))
+    def __l2_distance(self, X):
+        num_test = X.shape[0]
+        num_train = self.X.shape[0]
+        dists = np.zeros((num_test, num_train))
+        dists += np.sum(X * X, axis=1).reshape(-1, 1)  # add extra dimension to dots
+        dists += np.sum(self.X * self.X, axis=1)
+        dists -= 2 * np.matmul(X, self.X.transpose())
+        dists = np.sqrt(dists)
+        return dists
+
 
     @staticmethod
     def __classification_prediction(y):
