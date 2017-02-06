@@ -1,8 +1,9 @@
 import numpy as np
 from measures.cv import accuracy_score, mean_squared_error
-
+from measures.distance import l2_distance_squared
 class KNN:
-    def __init__(self, n_neighbors=5, metric=None, regression=False):
+
+    def __init__(self, n_neighbors=5, metric=None, regression=False, weights=None):
         '''
         Initializes the KNN algorithm.
         :param n_neighbors: The number of neighbors to use.
@@ -10,10 +11,11 @@ class KNN:
         1D vector as its first parameter, and a 2D matrix as the second parameter. It should calculate the rowwise distance
         between the first vector and all row vectors in the matrix.
         :param regression: Set to true for regression calculation. Defaults to False, which is classification.
+        :param weights: Available weighting schemes: rank and rank_squared
         '''
         self.n_neighbors = n_neighbors
-        if metric == None:
-            metric = self.__l2_distance
+        if metric is None:
+            metric = l2_distance_squared
         self.metric = metric
         self.regression = regression
         self.classification = not regression
@@ -21,6 +23,7 @@ class KNN:
             self.prediction_func = KNN.__classification_prediction
         else:
             self.prediction_func = KNN.__regression_prediction
+        self.weights = weights
 
 
     def fit(self, X, y):
@@ -35,20 +38,56 @@ class KNN:
         :param X: the design matrix X
         :return: the predicted values for rows of X
         '''
-        self.distances_ = self.metric(X)
+        if X.ndim == 1:
+            X = X.reshape(1,-1)
+
+        self.distances_ = self.metric(X, self.X)
 
         ranks = np.apply_along_axis(KNN.__rank, 1, self.distances_)
+
         # Using np.nan to denote values that are not nearest neighbors
         indicators = np.where(ranks < self.n_neighbors, 1, np.nan)
 
         y = np.multiply(indicators, self.y)
+        low_distances = np.multiply(indicators, self.distances_)
 
         # Construct new matrix without nan values
         newshape = (np.shape(X)[0], self.n_neighbors)
-        y = (np.reshape(y[~np.isnan(y)], newshape))
+        low_distances = low_distances[ranks < self.n_neighbors].reshape(-1, self.n_neighbors)
 
-        prediction = np.apply_along_axis(self.prediction_func, 1, y)
+        y = (np.reshape(y[~np.isnan(y)], newshape))
+        low_ranks = ranks[ranks < self.n_neighbors].reshape(-1,self.n_neighbors)
+
+
+
+        low_ranks = self.__rank_transform(low_ranks, low_distances)
+        prediction = self.prediction_func(self, y, low_ranks, )
         return prediction
+
+    def __rank_transform(self, ranks, distances):
+        result = len(ranks[0]) - ranks
+
+        if self.weights is None:
+            result[:,:] = 1
+        elif self.weights == "ranks":
+            pass
+        elif self.weights == "ranks_squared":
+            result = ranks ** 2
+        elif self.weights == "inv_distance":
+            result = 1 / (1. + distances)
+        elif self.weights == "distance":
+            result = np.max(distances,axis=1)-distances + 1. # add 1 to prevent zero weights
+
+        return result
+
+
+    def __weighted_counts(self, y, ranks):
+        counts = dict()
+        for y, r in zip(y, ranks):
+            if y not in counts:
+                counts[y] = 0
+            counts[y] += r
+        return zip(*counts.items())
 
     def score(self, X, y):
         '''
@@ -60,9 +99,9 @@ class KNN:
         '''
         predy = self.predict(X)
         if self.classification:
-            return accuracy_score(predy, y)
+            return accuracy_score(y, predy)
         else:
-            return mean_squared_error(predy, y)
+            return mean_squared_error(y, predy)
 
     def __get_distance_matrix(self, X):
         X = X.astype(np.float64)
@@ -84,23 +123,25 @@ class KNN:
         return ranks
 
 
-    def __l2_distance(self, X):
-        num_test = X.shape[0]
-        num_train = self.X.shape[0]
-        dists = np.zeros((num_test, num_train))
-        dists += np.sum(X * X, axis=1).reshape(-1, 1)  # add extra dimension to dots
-        dists += np.sum(self.X * self.X, axis=1)
-        dists -= 2 * np.matmul(X, self.X.transpose())
-        dists = np.sqrt(dists)
-        return dists
+    def __classification_prediction(self, y, weights):
+        prediction = np.zeros(len(y))
 
-
-    @staticmethod
-    def __classification_prediction(y):
-        values, counts = np.unique(y, return_counts=True)
+        for i, y_row in enumerate(y):
+            w = weights[i]
+            y_row = y_row.astype(np.int64)
+            values, counts = self.__weighted_counts(y_row, w)
+            valmax = values[np.argmax(counts)]
+            prediction[i] = valmax
         return values[np.argmax(counts)]
 
-    @staticmethod
-    def __regression_prediction(y):
-        return np.mean(y)
 
+    def __regression_prediction(self, y, ranks):
+        #
+        # ranks = len(ranks[0])-ranks
+        # ranks = ranks**2
+        ranksum = float(np.sum(ranks[0]))
+
+        y = np.matmul(y, ranks.transpose())
+        y /= ranksum
+
+        return y
