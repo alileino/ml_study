@@ -1,9 +1,12 @@
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 import seaborn as sns
+
+from measures.cv import cv_squares_score, KFold, cv_score, aggregate_cv
+from measures.distance import c_index
 from models.knn import KNN
-from measures.cv import cv_squares_score, KFold, cv_score
+
 '''
 Third Exercise: Prediction of metal ion content from multi-parameter data
 
@@ -36,7 +39,7 @@ class WaterDataProvider:
         y = df[WaterDataProvider.objective_columns]
 
         X = df.drop(WaterDataProvider.objective_columns, axis=1)
-        X = (X - X.mean())/(X.var())
+        X = (X - X.mean())/(X.std())
         return X, y, df
 
 def scatters(y):
@@ -59,26 +62,7 @@ def mean_cindex_plot(xticks, y, name):
     cindex = np.repeat(cindex, len(xticks))
     plt.plot(xticks, cindex, label=(name + " mean"))
 
-def c_index(truey, predy):
-    n = 0
-    h_sum = 0
-    for i in range(len(truey)):
-        t = truey[i]
-        p = predy[i]
-        for j in range(i+1, len(truey)):
-            nt = truey[j]
-            np = predy[j]
-            if t != nt:
-                n = n+1
-                if (p < np and t < nt) or (p > np and t > nt):
-                    h_sum += 1
-                elif (p < np and t > nt) or (p > np and t < nt):
-                    pass
-                elif p == np:
-                    h_sum += 0.5
-    if n != 0:
-        return h_sum/n
-    return 1
+
 # plot_per_column()
 
 def plot_per_column(leave_out):
@@ -123,11 +107,10 @@ def water_cindex_plots(leave_out, randomize=0, llim=1, hlim=15, show_mean=True):
         y = Y[ycolumn].values
         scores = []
         for k in neighbors:
-            knn = KNN(n_neighbors=k, regression=True)
+            knn = KNN(n_neighbors=k, regression=True, weights=None)
 
-            s = cv_score(knn, X, y, cv=KFold(n_splits=(len(X)//leave_out)), score_func=c_index)
+            s = aggregate_cv(knn, X, y, cv=KFold(n_splits=(len(X)//leave_out)), score_func=c_index)
             scores.append(np.mean(s) + np.random.rand()*randomize)
-
         plt.plot(neighbors, scores, label=ycolumn)
     if show_mean:
         plt.plot(neighbors, np.repeat(0.5, len(neighbors)))
@@ -138,11 +121,46 @@ def water_cindex_plots(leave_out, randomize=0, llim=1, hlim=15, show_mean=True):
     plt.xlabel("neighbors")
     savefig("water_cindex_plots%i%i" % (leave_out, llim))
 
+def water_cindex_weights(leave_out, llim=1, hlim=11, randomize=0, show_mean=False):
+    plt.figure()
+    data = WaterDataProvider()
+    X = data.X.values
+    Y = data.Y
+    neighbors = np.arange(llim, hlim)
+    ycolumn = "c_total"
+    y = Y[ycolumn].values
+
+    for weights in KNN.WEIGHTS:
+        scores = []
+
+        for k in neighbors:
+
+            subscores = []
+            for ycolumn in Y.columns:
+
+                y = Y[ycolumn].values
+
+                knn = KNN(n_neighbors=k, regression=True, weights=weights)
+
+                s = aggregate_cv(knn, X, y, cv=KFold(n_splits=(len(X)//leave_out)), score_func=c_index)
+                subscores.append(np.mean(s))
+            scores.append(np.mean(subscores))
+        plt.plot(neighbors, scores, label=weights)
+
+    if show_mean:
+        plt.plot(neighbors, np.repeat(0.5, len(neighbors)))
+    plt.suptitle("Leave-%i-Out CV c-index vs. neighbors" % leave_out)
+    plt.ylabel("C-index")
+    plt.legend()
+    plt.xticks(neighbors)
+    plt.xlabel("neighbors")
+    savefig("water_cindex_plots_weights%i%i" % (leave_out, llim))
+
 def savefig(name):
     import os.path as path
     IMG_PATH = "../reports/img"
     plt.savefig(path.join(IMG_PATH, name + ".png"), format="png")
-
-
-# water_cindex_plots(1,randomize=0.005)
-# water_cindex_plots(3, llim=2, hlim=25, show_mean=False)
+    plt.show()
+water_cindex_weights(3, llim=2, hlim=25)
+# water_cindex_plots(1)
+# water_cindex_plots(3, llim=2, hlim=11, show_mean=False)
