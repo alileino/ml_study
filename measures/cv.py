@@ -18,7 +18,18 @@ class KFold:
             yield trainindex, testindex
 
 
-def accuracy_score(predy, y):
+class SLOO():
+    def __init__(self, distances, delta):
+        self.dist = distances
+        self.delta = delta
+
+    def split(self, X):
+        for i in range(len(X)):
+            trainindex = np.where(self.dist[i] > self.delta)
+            yield trainindex, [i]
+
+
+def accuracy_score(y, predy):
     '''
     Returns the accuracy score for predicted y and true y
     :param predy: the predicted y
@@ -27,7 +38,7 @@ def accuracy_score(predy, y):
     '''
     return np.mean(np.where(np.isclose(predy, y), 1, 0))
 
-def mean_squared_error(predy, y):
+def mean_squared_error(y, predy):
     '''
     Returns the sum of squared differences between predicted y and true y
     :param predy: predicted y
@@ -36,7 +47,7 @@ def mean_squared_error(predy, y):
     '''
     return np.mean((predy - y) ** 2)
 
-def cv_score(model, X, y, cv, score_func):
+def cv_score(model, X, y, cv, score_func, return_predictions=False):
     '''
     Returns the cross-validated
     :param model: the model to use
@@ -47,6 +58,8 @@ def cv_score(model, X, y, cv, score_func):
     :return: the mean score of scores returned by score_func for each cross-validation split
     '''
     scores = list()
+    if return_predictions:
+        preds = list()
     for trainindex, testindex in cv.split(X):
         trainX = X[trainindex]
 
@@ -55,9 +68,30 @@ def cv_score(model, X, y, cv, score_func):
         testY = y[testindex]
         model.fit(trainX, trainY)
         predy = model.predict(testX)
-        score = score_func(predy, testY)
+        if return_predictions:
+            preds.append(predy)
+        score = score_func(testY, predy)
         scores.append(score)
-    return scores
+    result = np.array(scores)
+    if return_predictions:
+        preds = np.array(preds)
+        result = (scores, preds)
+    return result
+
+def aggregate_cv(model, X, y, cv, score_func, return_predictions=False):
+    preds = []
+    for trainindex, testindex in cv.split(X):
+        trainX = X[trainindex]
+
+        trainY = y[trainindex]
+        testX = X[testindex]
+        model.fit(trainX, trainY)
+        predy = model.predict(testX)
+        preds.append(predy)
+    result = score_func(y, np.array(preds))
+    if return_predictions:
+        result = (result, preds)
+    return result
 
 def cv_accuracy_score(model, X, y, cv=KFold(n_splits=4)):
     '''
