@@ -2,6 +2,7 @@ import numpy as np
 from measures.cv import accuracy_score, mean_squared_error
 from measures.distance import l2_distance_squared
 class KNN:
+    WEIGHTS = ["none", "ranks", "ranks_squared", "inv_distance", "distance"]
 
     def __init__(self, n_neighbors=5, metric=None, regression=False, weights=None):
         '''
@@ -14,6 +15,8 @@ class KNN:
         :param weights: Available weighting schemes: rank and rank_squared
         '''
         self.n_neighbors = n_neighbors
+        if weights == "none":
+            weights = None
         if metric is None:
             metric = l2_distance_squared
         self.metric = metric
@@ -58,13 +61,17 @@ class KNN:
         y = (np.reshape(y[~np.isnan(y)], newshape))
         low_ranks = ranks[ranks < self.n_neighbors].reshape(-1,self.n_neighbors)
 
-
-
-        low_ranks = self.__rank_transform(low_ranks, low_distances)
-        prediction = self.prediction_func(self, y, low_ranks, )
+        low_ranks = self.__weight_transform(low_ranks, low_distances)
+        prediction = self.prediction_func(self, y, low_ranks )
         return prediction
 
-    def __rank_transform(self, ranks, distances):
+    def __weight_transform(self, ranks, distances):
+        '''
+        Transforms ranks and distances to weights for the predictions
+        :param ranks: a rank matrix
+        :param distances: a distance matrix
+        :return: a weight matrix
+        '''
         result = len(ranks[0]) - ranks
 
         if self.weights is None:
@@ -76,7 +83,7 @@ class KNN:
         elif self.weights == "inv_distance":
             result = 1 / (1. + distances)
         elif self.weights == "distance":
-            result = np.max(distances,axis=1)-distances + 1. # add 1 to prevent zero weights
+            result =  np.max(distances, axis=1).reshape(-1,1) -distances + 1 # add 1 to prevent zero weights
 
         return result
 
@@ -108,6 +115,7 @@ class KNN:
         # Bind self to apply_metric, needed to bind self.X
         apply_metric = lambda y : self.metric(y, self.X)
         dist = np.apply_along_axis(apply_metric, 1, X)
+        # dist = np.sqrt(dist)
         return dist
 
     @staticmethod
@@ -132,16 +140,13 @@ class KNN:
             values, counts = self.__weighted_counts(y_row, w)
             valmax = values[np.argmax(counts)]
             prediction[i] = valmax
-        return values[np.argmax(counts)]
+        return prediction
 
 
     def __regression_prediction(self, y, ranks):
-        #
-        # ranks = len(ranks[0])-ranks
-        # ranks = ranks**2
         ranksum = float(np.sum(ranks[0]))
+        y = np.sum(y*ranks, axis=1)
 
-        y = np.matmul(y, ranks.transpose())
         y /= ranksum
 
         return y
