@@ -74,6 +74,7 @@ class KNN:
         '''
         result = len(ranks[0]) - ranks
 
+        distances = np.sqrt(distances)
         if self.weights is None:
             result[:,:] = 1
         elif self.weights == "ranks":
@@ -83,7 +84,7 @@ class KNN:
         elif self.weights == "inv_distance":
             result = 1 / (1. + distances)
         elif self.weights == "distance":
-            result =  np.max(distances, axis=1).reshape(-1,1) -distances + 1 # add 1 to prevent zero weights
+            result = np.max(distances, axis=1).reshape(-1,1) -distances + 1 # add 1 to prevent zero weights
 
         return result
 
